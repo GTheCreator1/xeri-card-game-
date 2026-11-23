@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111916">
+  <meta name="description" content="Xeri, das griechische Kartenspiel in eurer Variante. Spiele gegen den Computer oder lade Freunde zu einem privaten Tisch ein.">
+  <title>XERI · ΞΕΡΗ</title>
+  <link rel="icon" href="./assets/icon.png" type="image/png">
+  <link rel="stylesheet" href="./style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"
+    integrity="sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu" crossorigin="anonymous"></script>
+  <script type="module" src="./script.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <button id="home-button" class="brand" type="button" aria-label="Xeri Hauptmenü">
+        <span class="brand-mark" aria-hidden="true">♠</span>
+        <span class="brand-word">XERI <span>ΞΕΡΗ</span></span>
+      </button>
+      <div class="header-actions">
+        <button id="sound-button" class="utility" type="button" aria-pressed="true">
+          <span id="sound-icon" class="sound-icon" aria-hidden="true">♩</span><span id="sound-text">Ton an</span>
+        </button>
+        <button id="rules-button" class="utility" type="button">
+          <span class="help-icon" aria-hidden="true">?</span><span>Spielregeln</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="shell" tabindex="-1"></main>
+
+  <footer class="shell site-footer">
+    <span class="footer-suits" aria-hidden="true">♠ <span>♥</span> ♣ <span>♦</span></span>
+    <span>52 Karten · 2 oder 4 Spieler</span>
+  </footer>
+
+  <dialog id="rules-dialog" aria-labelledby="rules-title">
+    <div class="dialog-top">
+      <h2 id="rules-title">Spielregeln</h2>
+      <form method="dialog"><button class="icon-button" aria-label="Regeln schließen">×</button></form>
+    </div>
+    <div class="rules-copy">
+      <h3>Austeilen</h3>
+      <p>Ein Deck mit 52 Karten. Zu Beginn liegen vier offene Karten als Stapel auf dem Tisch. Jeder Spieler erhält vier Karten und sieht nur die eigene Hand. Erst wenn alle Hände leer sind, wird neu ausgeteilt. Eine kürzere Schlussausteilung wird gleichmäßig verteilt.</p>
+      <h3>Spielen und abräumen</h3>
+      <p>Spiele reihum genau eine Karte. Ein gleicher Kartenwert wie oben auf dem Stapel oder ein Bube räumt den gesamten Stapel einschließlich der gespielten Karte ab. Auf einem leeren Tisch eröffnet jede Karte einen neuen Stapel.</p>
+      <h3>ΞΕΡΗ und Punkte</h3>
+      <p>Jede gesammelte Karte zählt 1 Punkt. Liegt genau eine Karte und du räumst sie mit demselben Wert ab, bekommst du zusätzlich 10 Punkte. Bube auf einzelnem Buben bringt 20 Bonuspunkte. Bube auf einer einzelnen anderen Karte bringt die Kartenpunkte.</p>
+      <h3>Teams und Spielende</h3>
+      <p>Im Teamspiel sitzen sich die Partner gegenüber (Plätze 1 und 3, 2 und 4). Die Zugfolge ist 1, 2, 3, 4. Alle Karten- und Xeri-Punkte zählen für das eigene Team. Am Ende gehen Restkarten ohne Bonus an den letzten Spieler, der abgeräumt hat. Die höhere Summe gewinnt. Bei Gleichstand endet die Partie unentschieden.</p>
+    </div>
+    <form method="dialog"><button class="button gold full">Verstanden</button></form>
+  </dialog>
+
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <div class="dialog-top"><h2 id="confirm-title"></h2></div>
+    <p id="confirm-copy"></p>
+    <form method="dialog" class="dialog-actions">
+      <button class="button outline" value="cancel" autofocus>Abbrechen</button>
+      <button id="confirm-yes" class="button gold" value="confirm">Verlassen</button>
+    </form>
+  </dialog>
+  <noscript><p class="shell">Aktiviere JavaScript, um Xeri zu spielen.</p></noscript>
+</body>
+</html>
