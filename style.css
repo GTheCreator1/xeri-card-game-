@@ -246,22 +246,21 @@ main:focus { outline: none; }
 .card.playable:active:not(:disabled) { transform: translateY(-4px); }
 .card.playable:disabled { cursor: default; }
 .table-action { margin: .65rem .15rem 0; text-align: center; min-height: 1.3rem; font-size: .85rem; color: var(--muted); }
-.sweep, .card-flight, .xeri-flash { position: absolute; z-index: 3; pointer-events: none; }
-.card-flight { inset: 0; display: grid; place-items: center; }
-.card-flight .card { animation: card-flight .34s cubic-bezier(.13,.63,.24,1) both; }
-.card-flight.sweep .card { animation: sweep .53s ease both; }
+/* The pile shares the board's stacking context with the seats. */
+.table-pile > .card.in-flight { z-index: 2; transform-origin: top left; pointer-events: none; }
+.table-pile.sweeping { z-index: 2; pointer-events: none; }
 .xeri-flash {
+  position: absolute; z-index: 2; pointer-events: none;
   min-width: max-content; top: 32%; left: 50%; text-shadow: 0 1px 4px #181409, 0 0 18px #d4ac43;
   transform: translate(-50%, -50%); color: #ffe2a1; font: 700 clamp(2rem, 8vw, 4rem)/.95 var(--serif);
   animation: xeri .95s ease both;
 }
 .xeri-flash span { display: block; font: 700 .36em var(--sans); margin-top: .25em; }
 .xeri-flash.double { color: #fff0cd; filter: drop-shadow(0 0 12px #ffbd53); animation-duration: 1.28s; }
+.board.pending-deal .hand, .board.pending-deal .opponent-hand { visibility: hidden; }
 .board.deal .hand .card, .board.deal .opponent-hand .card { animation: deal .27s ease-out both; animation-delay: var(--delay, 0ms); }
 .result-dialog { animation: result .3s ease-out both; }
 @keyframes deal { from { opacity: 0; transform: translateY(-22px) scale(.85); } to { opacity: 1; transform: none; } }
-@keyframes card-flight { from { opacity: .45; transform: translateY(55%) rotate(-12deg) scale(.85); } 76% { opacity: 1; } to { opacity: 0; transform: none; } }
-@keyframes sweep { 0% { opacity: .8; transform: translateY(38%) rotate(-8deg); } 38% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translate(var(--sweep-x, 100%), var(--sweep-y, -46%)) rotate(14deg) scale(.55); } }
 @keyframes xeri { 0% { opacity: 0; scale: .65; } 23% { opacity: 1; scale: 1.12; } 66% { opacity: 1; scale: 1; } 100% { opacity: 0; scale: .97; } }
 @keyframes result { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: none; } }
 

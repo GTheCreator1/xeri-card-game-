@@ -1,6 +1,7 @@
 import { cardLabel, newGame, playCard, rankOf, SUITS, teamOf, viewFor } from './game/engine.js';
 import { chooseCard } from './game/ai.js';
 import { GameAudio } from './game/audio.js';
+import { cardOrigin, flyCard, sweepPile } from './game/card-motion.js';
 import { inviteFor, OnlineSession } from './game/online.js';
 import { isKey, isName } from './game/room.js';
 
@@ -8,6 +9,7 @@ const main = document.querySelector('#main');
 const rulesDialog = document.querySelector('#rules-dialog');
 const confirmDialog = document.querySelector('#confirm-dialog');
 const soundButton = document.querySelector('#sound-button');
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const audio = new GameAudio();
 const modes = [
   { id: 'solo', title: 'Gegen Computer', detail: 'Solo am Tisch', icon: '♠' },
@@ -39,6 +41,10 @@ let resultDialog;
 let confirmAction;
 let copyMessage = '';
 let localMatch = 0;
+let shownSnapshot = null;
+const queuedMoves = [];
+let moveRun = null;
+let refreshAfterMove = false;
 
 function soundLabel() {
   soundButton.setAttribute('aria-pressed', String(audio.enabled));
@@ -189,7 +195,7 @@ function seatMarkup(snapshot, offset, position, canPlay) {
     cardFace(card, { playable: true, enabled: canPlay, delay: index * 41 })).join('')}</div>` :
     `<div class="opponent-hand" aria-label="${view.handCounts[seat]} verdeckte Handkarten">${Array.from(
       { length: view.handCounts[seat] }, (_, index) => cardBack(index * 38)).join('')}</div>`;
-  return `<div class="board-seat seat-${position}${view.turn === seat ? ' active' : ''}${player.connected ? '' : ' offline'}">
+  return `<div class="board-seat seat-${position}${view.turn === seat ? ' active' : ''}${player.connected ? '' : ' offline'}" data-seat="${seat}">
     <div class="seat-label" title="${escape(player.name)} · ${role}"><span class="role-mark" aria-hidden="true">${seatsIcons[seat]}</span>
       <strong>${escape(player.name)}</strong><small>${own ? '' : role}</small>
     </div>${hand}</div>`;
@@ -205,25 +211,33 @@ function moveDescription(snapshot) {
   return `${who} ${cardLabel(move.card)} gespielt.`;
 }
 
-function gameScreen(snapshot, { deal = false, move = null } = {}) {
+function isPaused(snapshot) {
+  return Boolean(online && (snapshot.players.some(player => !player.connected) || (!online.room && !online.authenticated)));
+}
+
+function isPlayerTurn(snapshot, paused = isPaused(snapshot)) {
+  const { view } = snapshot;
+  return !paused && !view.finished && view.turn === view.seat;
+}
+
+function gameScreen(snapshot, {
+  deal = false, moving = false, pendingDeal = false, table = snapshot.view.table,
+  scoreSnapshot = snapshot, bonus = 0,
+} = {}) {
   const { players, view } = snapshot;
   const otherMissing = players.some(player => !player.connected);
-  const paused = Boolean(online && (otherMissing || (!online.room && !online.authenticated)));
-  const yourTurn = view.turn === view.seat && !paused && !view.finished;
+  const paused = isPaused(snapshot);
+  const yourTurn = isPlayerTurn(snapshot, paused);
   const turnText = view.finished ? 'Partie beendet' : paused ? 'Partie pausiert' :
     yourTurn ? pending ? 'Spielzug wird gesendet …' : 'Du bist am Zug' : players[view.turn].name + ' ist am Zug';
   const missing = otherMissing && !network.text ? {
     text: 'Die Partie ist pausiert. Ein Mitspieler hat die Verbindung verloren. Der Platz bleibt für den Wiedereinstieg reserviert.',
   } : network;
   const gameName = online ? view.seats === 4 ? 'Online 2 vs. 2' : 'Online 1 vs. 1' : 'Gegen Computer';
-  const position = move ? (move.seat - view.seat + view.seats) % view.seats : 0;
-  const x = position === 0 || position === 2 || view.seats === 2 ? '0%' : position === 1 ? '-154%' : '154%';
-  const y = position === 0 ? '100%' : '-100%';
-  const moving = move ? `<div class="card-flight${move.captures ? ' sweep' : ''}" style="--sweep-x:${x};--sweep-y:${y}" aria-hidden="true">${cardFace(move.card)}</div>
-    ${move.bonus ? `<div class="xeri-flash${move.bonus === 20 ? ' double' : ''}" aria-hidden="true">ΞΕΡΗ!<span>+${move.bonus} Punkte</span></div>` : ''}` : '';
-  const pile = view.table.length ? view.table.slice(-4).map(card => cardFace(card)).join('') :
+  const flash = bonus ? `<div class="xeri-flash${bonus === 20 ? ' double' : ''}" aria-hidden="true">ΞΕΡΗ!<span>+${bonus} Punkte</span></div>` : '';
+  const pile = table.length ? table.slice(-4).map(card => cardFace(card)).join('') :
     '<div class="table-empty" aria-hidden="true">♣</div>';
-  const extra = view.finished ? '<button class="button gold" data-action="result">Ergebnis anzeigen</button>' :
+  const extra = view.finished ? `<button class="button gold" data-action="result"${moving ? ' disabled' : ''}>Ergebnis anzeigen</button>` :
     local ? '<button class="button outline small" data-action="new-local">Neues Spiel</button>' :
     online.room ? '<button class="button outline small" data-action="online-lobby">Zur Lobby</button>' :
     '<button class="button outline small" data-action="home">Raum verlassen</button>';
@@ -231,19 +245,19 @@ function gameScreen(snapshot, { deal = false, move = null } = {}) {
     <div class="game-layout">
       ${missing.text ? `<div class="connection" role="status"><p>${escape(missing.text)}</p>${missing.retry ?
         '<button class="button outline small" data-action="retry">Erneut verbinden</button>' : ''}</div>` : ''}
-      <section class="board felt${deal ? ' deal' : ''}" aria-label="Kartentisch">
+      <section class="board felt${deal ? ' deal' : ''}${pendingDeal ? ' pending-deal' : ''}" aria-label="Kartentisch">
         ${seatMarkup(snapshot, view.seats / 2, 'top')}
         ${view.seats === 4 ? seatMarkup(snapshot, 1, 'left') + seatMarkup(snapshot, 3, 'right') : ''}
         <div class="table-center">
           <div class="turn-line" role="status">${escape(turnText)}</div>
-          <div class="table-pile">${pile}${moving}</div>
-          <div class="table-caption">${view.table.length === 1 ? '1 Karte' : view.table.length + ' Karten'} auf dem Tisch</div>
+          <div class="table-pile">${pile}${flash}</div>
+          <div class="table-caption">${table.length === 1 ? '1 Karte' : table.length + ' Karten'} auf dem Tisch</div>
         </div>
-        ${seatMarkup(snapshot, 0, 'bottom', yourTurn && !pending)}
+        ${seatMarkup(snapshot, 0, 'bottom', yourTurn && !pending && !moving)}
       </section>
-      ${scoreboard(snapshot)}
+      ${scoreboard(scoreSnapshot)}
     </div>
-    <div class="table-action" role="status">${escape(notice || moveDescription(snapshot))}</div>`;
+    <div class="table-action" role="status">${escape(notice || moveDescription(scoreSnapshot))}</div>`;
 }
 
 function currentSnapshot() {
@@ -257,12 +271,11 @@ function currentSnapshot() {
   };
 }
 
-function render(effect) {
+function draw(snapshot, effect) {
   const focused = document.activeElement;
   const focusedAction = main.contains(focused) && focused.dataset.action;
   const focusedKey = focused?.dataset.key ?? '';
   const collectionOpen = main.querySelector('.collection')?.open;
-  const snapshot = currentSnapshot();
   main.innerHTML = snapshot?.view ? gameScreen(snapshot, effect) :
     online ? roomLobby(snapshot) : invite ? joinPanel() : menu();
   const collection = main.querySelector('.collection');
@@ -272,6 +285,18 @@ function render(effect) {
       node.dataset.action === focusedAction && (node.dataset.key ?? '') === focusedKey && !node.disabled);
     same?.focus({ preventScroll: true });
   }
+}
+
+function render() {
+  if (moveRun) refreshAfterMove = true;
+  else draw(shownSnapshot);
+}
+
+function cancelMoves() {
+  queuedMoves.length = 0;
+  moveRun?.abort();
+  moveRun = null;
+  refreshAfterMove = false;
 }
 
 function cleanUrl() {
@@ -288,8 +313,10 @@ function showMainMenu() {
   }
   clearPending();
   clearTimeout(botTimer);
+  cancelMoves();
   closeResult();
   local = null;
+  shownSnapshot = null;
   invite = null;
   badInvite = false;
   network = {};
@@ -349,25 +376,101 @@ function showResult() {
   resultDialog.showModal();
 }
 
+function setHandEnabled(enabled) {
+  for (const card of main.querySelectorAll('.hand > button')) card.disabled = !enabled;
+}
+
+function scheduleResult(view, bonus = 0) {
+  resultTimer = setTimeout(() => {
+    if (!rulesDialog.open && !confirmDialog.open) showResult();
+    if (view.winner === teamOf(view.seat)) audio.play('win');
+  }, bonus ? 840 : 420);
+}
+
+async function playQueuedMoves() {
+  const run = new AbortController();
+  const { signal } = run;
+  moveRun = run;
+  try {
+    // Network snapshots keep arriving while a move is painted. Consume them
+    // in order so the next flight starts from the hand currently on screen.
+    while (queuedMoves.length) {
+      const snapshot = queuedMoves.shift();
+      const before = shownSnapshot;
+      const { view } = snapshot;
+      const move = view.lastMove;
+      const deal = view.deal !== before.view.deal;
+      const clearsTable = move.captures || move.remainder > 0;
+      const instant = document.hidden || reducedMotion.matches || typeof main.animate !== 'function';
+      const origin = instant ? null : cardOrigin(main, before.view, move);
+      let pile;
+      let card;
+      refreshAfterMove = false;
+      if (origin?.width && origin.height) {
+        draw(snapshot, {
+          moving: true,
+          pendingDeal: deal,
+          table: clearsTable ? [...before.view.table, move.card] : view.table,
+          scoreSnapshot: clearsTable ? before : snapshot,
+        });
+        pile = main.querySelector('.table-pile');
+        card = pile.lastElementChild;
+        await flyCard(card, origin, signal);
+        if (signal.aborted) return;
+      }
+
+      audio.play(move.bonus === 20 ? 'double' : move.bonus ? 'xeri' : move.captures ? 'sweep' : 'play');
+      if (card && clearsTable) {
+        await sweepPile(pile, card, move.captures ? origin : null, signal);
+        if (signal.aborted) return;
+      }
+
+      const latest = currentSnapshot();
+      shownSnapshot = latest?.match === snapshot.match && latest.view?.version === view.version ? latest : snapshot;
+      const moreMoves = queuedMoves.length > 0;
+      if (!card || clearsTable || refreshAfterMove) {
+        draw(shownSnapshot, { deal, moving: moreMoves, bonus: move.bonus });
+      } else {
+        if (deal) {
+          const board = main.querySelector('.board');
+          board.classList.remove('pending-deal');
+          board.classList.add('deal');
+        }
+        setHandEnabled(!moreMoves && !pending && isPlayerTurn(shownSnapshot));
+      }
+      if (view.finished) scheduleResult(view, move.bonus);
+    }
+  } catch (error) {
+    if (!signal.aborted) {
+      console.error('Die Kartenanimation konnte nicht abgeschlossen werden.', error);
+      queuedMoves.length = 0;
+      shownSnapshot = currentSnapshot();
+      draw(shownSnapshot);
+      if (shownSnapshot?.view?.finished) scheduleResult(shownSnapshot.view);
+    }
+  } finally {
+    if (moveRun === run) moveRun = null;
+  }
+}
+
 function showUpdate(snapshot, prior) {
   const { view } = snapshot;
   const newMatch = !prior?.view || snapshot.match !== prior.match;
-  const changed = view && (newMatch || view.version !== prior?.view?.version);
-  if (newMatch || !view) closeResult();
-  if (!changed) {
+  const step = view && prior?.view ? view.version - prior.view.version : 0;
+  if (!view || newMatch || (step !== 0 && step !== 1)) {
+    cancelMoves();
+    closeResult();
+    shownSnapshot = snapshot;
+    notice = '';
+    draw(snapshot, { deal: view && (newMatch || view.deal !== prior.view.deal) });
+    if (view?.finished) scheduleResult(view);
+  } else if (step === 1) {
+    notice = '';
+    queuedMoves.push(snapshot);
+    if (!moveRun) void playQueuedMoves();
+  } else {
+    if (!moveRun) shownSnapshot = snapshot;
     render();
-    return;
-  }
-
-  notice = '';
-  const move = !newMatch ? view.lastMove : null;
-  render({ deal: view.deal !== prior?.view?.deal || newMatch, move });
-  if (move) audio.play(move.bonus === 20 ? 'double' : move.bonus ? 'xeri' : move.captures ? 'sweep' : 'play');
-  if (view.finished) {
-    resultTimer = setTimeout(() => {
-      if (!rulesDialog.open && !confirmDialog.open) showResult();
-      if (view.winner === teamOf(view.seat)) audio.play('win');
-    }, move?.bonus ? 840 : 420);
   }
 }
 
@@ -536,7 +639,9 @@ document.addEventListener('click', event => {
           if (online === session && pending) session.fail('Der Tisch hat deinen Spielzug noch nicht bestätigt.');
         }, 9000);
         const message = pending;
-        render();
+        // Keep the rendered hand in place until the host accepts this move.
+        setHandEnabled(false);
+        if (!session.room) main.querySelector('.turn-line').textContent = 'Spielzug wird gesendet …';
         session.play(message);
       }
       break;
